@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Completely lock down direct client-side access.
+    // All reads and writes must be performed through the secure server-side Admin SDK.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
