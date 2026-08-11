@@ -63,6 +63,57 @@ const db = process.env.FIREBASE_PRIVATE_KEY
   ? getFirestore() 
   : getFirestore("ai-studio-connectix-3a4f4478-9dc0-419f-84dc-bc2986d93ffb");
 
+import compression from 'compression';
+
+// Fast in-memory cache to eliminate database latency on reads & customer QR redirects
+let memoryPlacesCache: any[] | null = null;
+let memoryCacheLastUpdated = 0;
+const CACHE_TTL_MS = 5000; // 5-second TTL cache for ultra-fast response
+
+const getCachedPlaces = async (dbModeRef: { mode: 'firestore' | 'local-fallback'; errMsg: string | null }, db: any, readLocal: () => any[]): Promise<any[]> => {
+  const now = Date.now();
+  if (memoryPlacesCache && (now - memoryCacheLastUpdated < CACHE_TTL_MS)) {
+    return memoryPlacesCache;
+  }
+
+  let places: any[] = [];
+  if (dbModeRef.mode === 'firestore') {
+    try {
+      const snapshot = await db.collection('hotels').get();
+      places = snapshot.docs.map((doc: any) => {
+        const data = doc.data();
+        const pName = data.placeName || data.hotelName || 'Unnamed Place';
+        const pType = data.placeType || data.type || 'Hotel';
+        return {
+          ...data,
+          placeName: pName,
+          hotelName: pName,
+          placeType: pType,
+          type: pType,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString())
+        };
+      });
+      places.sort((a: any, b: any) => (b.createdAt > a.createdAt ? 1 : -1));
+    } catch (fsErr: any) {
+      console.warn('Firestore fetch failed, serving local fallback:', fsErr.message);
+      dbModeRef.mode = 'local-fallback';
+      dbModeRef.errMsg = fsErr.message;
+      places = readLocal();
+    }
+  } else {
+    places = readLocal();
+  }
+
+  memoryPlacesCache = places;
+  memoryCacheLastUpdated = now;
+  return places;
+};
+
+const invalidatePlacesCache = () => {
+  memoryPlacesCache = null;
+  memoryCacheLastUpdated = 0;
+};
+
 async function ensureDefaultAdmin() {
   try {
     await getAuth().getUserByEmail('admin@connectix.com');
@@ -100,9 +151,11 @@ async function ensureDefaultAdmin() {
 async function startServer() {
   await ensureDefaultAdmin();
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
-  app.use(express.json());
+  app.disable('x-powered-by');
+  app.use(compression());
+  app.use(express.json({ limit: '1mb' }));
 
   // Middleware to verify Firebase Auth ID token
   const verifyAuth = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -276,52 +329,45 @@ function getLocalNetworkIp(): string {
   };
 
   // -------------------------------------------------------------
-  // CUSTOMER SCAN FLOW (Public Area)
+  // CUSTOMER SCAN FLOW (Public Area - High Speed Redirection)
   // -------------------------------------------------------------
+  const dbModeObj = { mode: dbMode, errMsg: dbErrorMessage };
+
   const processScanData = async (qrId: string, req: express.Request): Promise<{ success: boolean; googleReviewUrl?: string; hotelName?: string; error?: string; status: number }> => {
     try {
-      if (dbMode === 'firestore') {
-        try {
-          const hotelRef = db.collection('hotels').doc(qrId);
-          const hotelDoc = await hotelRef.get();
+      const places = await getCachedPlaces(dbModeObj, db, readLocalHotels);
+      dbMode = dbModeObj.mode;
+      dbErrorMessage = dbModeObj.errMsg;
 
-          if (hotelDoc.exists) {
-            const hotelData = hotelDoc.data();
-            const googleReviewUrl = hotelData?.googleReviewUrl;
-            const hotelName = hotelData?.placeName || hotelData?.hotelName || 'Place';
-            const placeType = hotelData?.placeType || hotelData?.type || 'Hotel';
+      const place = places.find(h => h.id === qrId);
 
-            await hotelRef.update({ scanCount: FieldValue.increment(1) });
-            await recordScanEvent(qrId, hotelName, placeType, req);
-
-            if (googleReviewUrl) {
-              return { success: true, googleReviewUrl, hotelName, status: 200 };
-            }
-            return { success: false, error: 'Review URL not configured for this QR Code', status: 404 };
-          }
-        } catch (fsErr: any) {
-          console.warn('Firestore failed during scan redirect, using local store fallback:', fsErr.message);
-          dbMode = 'local-fallback';
-          dbErrorMessage = fsErr.message;
-        }
-      }
-
-      // Local fallback lookup & increment
-      const hotels = readLocalHotels();
-      const hotelIndex = hotels.findIndex(h => h.id === qrId);
-
-      if (hotelIndex === -1) {
+      if (!place) {
         return { success: false, error: 'QR Code not found', status: 404 };
       }
 
-      hotels[hotelIndex].scanCount = (hotels[hotelIndex].scanCount || 0) + 1;
-      writeLocalHotels(hotels);
+      // Optimistic RAM update for immediate scan counter reflection
+      place.scanCount = (place.scanCount || 0) + 1;
 
-      const targetUrl = hotels[hotelIndex].googleReviewUrl;
-      const hotelName = hotels[hotelIndex].placeName || hotels[hotelIndex].hotelName || 'Place';
-      const placeType = hotels[hotelIndex].placeType || hotels[hotelIndex].type || 'Hotel';
+      const targetUrl = place.googleReviewUrl;
+      const hotelName = place.placeName || place.hotelName || 'Place';
+      const placeType = place.placeType || place.type || 'Hotel';
 
-      await recordScanEvent(qrId, hotelName, placeType, req);
+      // Async background logging without delaying the HTTP 302 redirect
+      recordScanEvent(qrId, hotelName, placeType, req).catch(console.error);
+
+      if (dbMode === 'firestore') {
+        db.collection('hotels').doc(qrId).update({ scanCount: FieldValue.increment(1) }).catch(fsErr => {
+          console.warn('Firestore scan increment failed, updating local store fallback:', fsErr.message);
+          dbMode = 'local-fallback';
+        });
+      } else {
+        const localHotels = readLocalHotels();
+        const idx = localHotels.findIndex(h => h.id === qrId);
+        if (idx !== -1) {
+          localHotels[idx].scanCount = (localHotels[idx].scanCount || 0) + 1;
+          writeLocalHotels(localHotels);
+        }
+      }
 
       if (targetUrl) {
         return { success: true, googleReviewUrl: targetUrl, hotelName, status: 200 };
@@ -383,26 +429,8 @@ function getLocalNetworkIp(): string {
         return res.status(400).json({ error: 'Place name and Google Review URL are required' });
       }
 
-      let hotelsList: any[] = [];
-      let isUsingFirestore = dbMode === 'firestore';
+      const hotelsList = await getCachedPlaces(dbModeObj, db, readLocalHotels);
 
-      if (isUsingFirestore) {
-        try {
-          const snapshot = await db.collection('hotels').get();
-          hotelsList = snapshot.docs.map(doc => doc.data());
-        } catch (fsErr: any) {
-          console.warn('Firestore query failed, switching to local store fallback:', fsErr.message);
-          dbMode = 'local-fallback';
-          dbErrorMessage = fsErr.message;
-          isUsingFirestore = false;
-        }
-      }
-
-      if (!isUsingFirestore) {
-        hotelsList = readLocalHotels();
-      }
-
-      // Calculate next QR ID number
       let maxNum = 0;
       hotelsList.forEach(h => {
         if (h.id && typeof h.id === 'string' && h.id.startsWith('QR')) {
@@ -415,13 +443,15 @@ function getLocalNetworkIp(): string {
       const newPlace = {
         id: qrId,
         placeName,
-        hotelName: placeName, // Backward compatibility
+        hotelName: placeName,
         placeType,
         type: placeType,
         googleReviewUrl,
         scanCount: 0,
         createdAt: new Date().toISOString()
       };
+
+      invalidatePlacesCache();
 
       if (dbMode === 'firestore') {
         try {
@@ -455,43 +485,10 @@ function getLocalNetworkIp(): string {
 
   const handleGetPlaces = async (req: express.Request, res: express.Response) => {
     try {
-      if (dbMode === 'firestore') {
-        try {
-          const snapshot = await db.collection('hotels').get();
-          const places = snapshot.docs.map(doc => {
-            const data = doc.data();
-            const pName = data.placeName || data.hotelName || 'Unnamed Place';
-            const pType = data.placeType || data.type || 'Hotel';
-            return {
-              ...data,
-              placeName: pName,
-              hotelName: pName,
-              placeType: pType,
-              type: pType,
-              createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : (data.createdAt || new Date().toISOString())
-            };
-          });
-          places.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
-          return res.json(places);
-        } catch (fsErr: any) {
-          console.warn('Firestore fetch failed, serving local fallback:', fsErr.message);
-          dbMode = 'local-fallback';
-          dbErrorMessage = fsErr.message;
-        }
-      }
-
-      const places = readLocalHotels().map((h: any) => {
-        const pName = h.placeName || h.hotelName || 'Unnamed Place';
-        const pType = h.placeType || h.type || 'Hotel';
-        return {
-          ...h,
-          placeName: pName,
-          hotelName: pName,
-          placeType: pType,
-          type: pType
-        };
-      });
-      places.sort((a: any, b: any) => (b.createdAt > a.createdAt ? 1 : -1));
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      const places = await getCachedPlaces(dbModeObj, db, readLocalHotels);
+      dbMode = dbModeObj.mode;
+      dbErrorMessage = dbModeObj.errMsg;
       res.json(places);
     } catch (error: any) {
       console.error('Error fetching places:', error);
@@ -510,6 +507,8 @@ function getLocalNetworkIp(): string {
     }
 
     try {
+      invalidatePlacesCache();
+
       if (dbMode === 'firestore') {
         try {
           await db.collection('hotels').doc(id).delete();
@@ -520,7 +519,6 @@ function getLocalNetworkIp(): string {
         }
       }
 
-      // Always update local store backup as well
       const currentLocal = readLocalHotels();
       const updatedLocal = currentLocal.filter((h: any) => h.id !== id);
       writeLocalHotels(updatedLocal);
@@ -537,21 +535,8 @@ function getLocalNetworkIp(): string {
 
   app.get('/api/admin/analytics', verifyAuth, async (req, res) => {
     try {
-      let places: any[] = [];
-      if (dbMode === 'firestore') {
-        try {
-          const snapshot = await db.collection('hotels').get();
-          places = snapshot.docs.map(doc => doc.data());
-        } catch (fsErr: any) {
-          console.warn('Firestore analytics failed, serving local fallback:', fsErr.message);
-          dbMode = 'local-fallback';
-          dbErrorMessage = fsErr.message;
-          places = readLocalHotels();
-        }
-      } else {
-        places = readLocalHotels();
-      }
-
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      const places = await getCachedPlaces(dbModeObj, db, readLocalHotels);
       const data = places.map(p => ({
         name: p.placeName || p.hotelName || 'Unnamed Place',
         type: p.placeType || p.type || 'Hotel',
