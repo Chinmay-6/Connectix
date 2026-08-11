@@ -602,19 +602,23 @@ function getLocalNetworkIp(): string {
 
 
   // -------------------------------------------------------------
-  // VITE MIDDLEWARE SETUP
+  // VITE MIDDLEWARE / PRODUCTION STATIC SETUP
   // -------------------------------------------------------------
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), 'dist');
+  const indexHtmlPath = path.join(distPath, 'index.html');
+  const hasDist = fs.existsSync(indexHtmlPath);
+
+  if (process.env.NODE_ENV !== "production" && !hasDist) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    console.log(`[Production Engine] Serving static assets from: ${distPath}`);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(indexHtmlPath);
     });
   }
 
