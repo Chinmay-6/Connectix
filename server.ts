@@ -189,12 +189,26 @@ function getLocalNetworkIp(): string {
   // -------------------------------------------------------------
   app.get('/api/system/status', async (req, res) => {
     const localIp = getLocalNetworkIp();
-    const networkScanUrl = `http://${localIp}:3000`;
+    const hostHeader = (req.headers.host || '').toString();
+    const protocol = (req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http')).toString();
+
+    let publicUrl = '';
+    if (process.env.RENDER_EXTERNAL_URL) {
+      publicUrl = process.env.RENDER_EXTERNAL_URL;
+    } else if (process.env.APP_URL) {
+      publicUrl = process.env.APP_URL;
+    } else if (hostHeader && !hostHeader.includes('localhost') && !hostHeader.includes('127.0.0.1')) {
+      publicUrl = `${protocol}://${hostHeader}`;
+    } else {
+      publicUrl = `http://${localIp}:3000`;
+    }
+
     res.json({
       dbMode,
       dbErrorMessage,
       localIp,
-      networkScanUrl,
+      networkScanUrl: publicUrl,
+      publicUrl,
       projectId: process.env.FIREBASE_PROJECT_ID || 'connectx-b614a'
     });
   });

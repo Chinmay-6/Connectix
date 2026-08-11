@@ -64,23 +64,6 @@ export default function AdminLogin() {
           <p className="text-xs text-slate-400 mt-1">Authenticate to access the operational command center</p>
         </div>
 
-        {/* Quick Demo Autofill Notice */}
-        <div className="mb-6 p-3.5 bg-blue-950/40 border border-blue-800/50 rounded-2xl flex items-center justify-between text-xs text-blue-300">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-blue-400 shrink-0" />
-            <div>
-              <div className="font-bold text-slate-200">Default Admin Account</div>
-              <div className="text-[11px] text-blue-400 font-mono">admin@connectix.com</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={autofillDefault}
-            className="px-2.5 py-1 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 font-bold text-[11px] border border-blue-500/30 transition-colors uppercase tracking-wider"
-          >
-            Auto-fill
-          </button>
-        </div>
 
         {error && (
           <div className="mb-6 p-3.5 bg-red-950/40 border border-red-800/50 rounded-2xl text-red-300 text-xs font-medium leading-relaxed">
