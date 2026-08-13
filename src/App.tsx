@@ -11,9 +11,12 @@ const QRList = lazy(() => import('./components/QRList'));
 const Analytics = lazy(() => import('./components/Analytics'));
 
 const LoadingFallback = () => (
-  <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4">
-    <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono">Loading Connectix Module...</div>
+  <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center space-y-4">
+    <div className="relative">
+      <img src="/conlog.jpeg" alt="TAPHUB Logo" className="h-12 w-auto logo-glow mb-2" />
+      <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+    </div>
+    <div className="text-xs font-bold text-slate-500 uppercase tracking-widest font-mono">Loading TAPHUB...</div>
   </div>
 );
 

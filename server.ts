@@ -59,8 +59,8 @@ if (process.env.FIREBASE_PRIVATE_KEY) {
 }
 
 // In AI studio provisioned DB, the database ID is often specific, but if they provide their own, we use default
-const db = process.env.FIREBASE_PRIVATE_KEY 
-  ? getFirestore() 
+const db = process.env.FIREBASE_PRIVATE_KEY
+  ? getFirestore()
   : getFirestore("ai-studio-connectix-3a4f4478-9dc0-419f-84dc-bc2986d93ffb");
 
 import compression from 'compression';
@@ -116,17 +116,17 @@ const invalidatePlacesCache = () => {
 
 async function ensureDefaultAdmin() {
   try {
-    await getAuth().getUserByEmail('admin@connectix.com');
+    await getAuth().getUserByEmail('admin@taphub.com');
     console.log('Default admin user already exists.');
   } catch (error: any) {
     if (error.code === 'auth/user-not-found') {
       try {
         await getAuth().createUser({
-          email: 'admin@connectix.com',
+          email: 'admin@taphub.com',
           password: 'Password@1234',
           displayName: 'System Admin',
         });
-        console.log('Default admin user created: admin@connectix.com / Password@1234');
+        console.log('Default admin user created: admin@taphub.com / Password@1234');
       } catch (createError: any) {
         if (createError.code === 'auth/configuration-not-found' || createError.message.includes('CONFIGURATION_NOT_FOUND')) {
           console.warn('\n--- WARNING ---');
@@ -225,17 +225,17 @@ async function startServer() {
     }
   };
 
-function getLocalNetworkIp(): string {
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const net of interfaces[name] || []) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
+  function getLocalNetworkIp(): string {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const net of interfaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          return net.address;
+        }
       }
     }
+    return '127.0.0.1';
   }
-  return '127.0.0.1';
-}
 
   // -------------------------------------------------------------
   // SYSTEM HEALTH API
@@ -397,7 +397,7 @@ function getLocalNetworkIp(): string {
   app.get('/scan/:qrId', async (req, res, next) => {
     const acceptsJson = req.headers.accept?.includes('application/json');
     const result = await processScanData(req.params.qrId, req);
-    
+
     if (!result.success) {
       if (acceptsJson) return res.status(result.status).json({ error: result.error });
       return res.status(result.status).send(result.error);
@@ -610,7 +610,7 @@ function getLocalNetworkIp(): string {
   app.listen(PORT, "0.0.0.0", () => {
     const localIp = getLocalNetworkIp();
     console.log(`\n======================================================`);
-    console.log(`  CONNECTIX SERVER READY`);
+    console.log(`  TAPHUB SERVER READY`);
     console.log(`  Local Host:   http://localhost:${PORT}`);
     console.log(`  Mobile Wi-Fi: http://${localIp}:${PORT}`);
     console.log(`======================================================\n`);
