@@ -1,6 +1,6 @@
-# Connectix Setup
+# TapHub Setup
 
-To configure Connectix for a production deployment and fix the `auth/operation-not-allowed` error, please follow these steps:
+To configure TapHub for a production deployment and fix the `auth/operation-not-allowed` error, please follow these steps:
 
 1. **Enable Firebase Authentication (Email/Password)**
    - Go to the [Firebase Console](https://console.firebase.google.com/) for your project.
