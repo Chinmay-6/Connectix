@@ -126,7 +126,7 @@ async function ensureDefaultAdmin() {
           password: 'Password@1234',
           displayName: 'System Admin',
         });
-        console.log('Default admin user created: admin@taphub.com / Password@1234');
+        // console.log('Default admin user created: admin@taphub.com / Password@1234');
       } catch (createError: any) {
         if (createError.code === 'auth/configuration-not-found' || createError.message.includes('CONFIGURATION_NOT_FOUND')) {
           console.warn('\n--- WARNING ---');
@@ -585,6 +585,12 @@ async function startServer() {
     }
   });
 
+  // -------------------------------------------------------------
+  // KEEP-ALIVE HEALTH CHECK ROUTE
+  // -------------------------------------------------------------
+  app.get('/healthz', (_req, res) => {
+    res.status(200).send('OK');
+  });
 
   // -------------------------------------------------------------
   // VITE MIDDLEWARE / PRODUCTION STATIC SETUP
