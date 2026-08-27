@@ -28,7 +28,9 @@ export default function QRList() {
 
   // Network host setup for multi-device scanning
   const [networkScanUrl, setNetworkScanUrl] = useState<string>('');
-  const [hostMode, setHostMode] = useState<'network' | 'localhost' | 'custom'>('network');
+  const [hostMode, setHostMode] = useState<'network' | 'localhost' | 'custom'>(
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.') ? 'network' : 'localhost'
+  );
   const [customServerHost, setCustomServerHost] = useState<string>('');
 
   useEffect(() => {

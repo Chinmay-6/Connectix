@@ -242,17 +242,18 @@ app.get('/api/system/status', async (req, res) => {
   const protocol = (req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http')).toString();
 
   let publicUrl = '';
-  if (process.env.VERCEL_URL) {
+  if (hostHeader && !hostHeader.includes('localhost') && !hostHeader.includes('127.0.0.1')) {
+    publicUrl = `${protocol}://${hostHeader}`;
+  } else if (process.env.APP_URL) {
+    publicUrl = process.env.APP_URL;
+  } else if (process.env.VERCEL_URL) {
     publicUrl = `https://${process.env.VERCEL_URL}`;
   } else if (process.env.RENDER_EXTERNAL_URL) {
     publicUrl = process.env.RENDER_EXTERNAL_URL;
-  } else if (process.env.APP_URL) {
-    publicUrl = process.env.APP_URL;
-  } else if (hostHeader && !hostHeader.includes('localhost') && !hostHeader.includes('127.0.0.1')) {
-    publicUrl = `${protocol}://${hostHeader}`;
   } else {
     publicUrl = `http://${localIp}:3000`;
   }
+
 
   res.json({
     dbMode,
