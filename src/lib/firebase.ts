@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = import.meta.env.VITE_FIREBASE_API_KEY 
   ? {
@@ -24,5 +23,4 @@ const firebaseConfig = import.meta.env.VITE_FIREBASE_API_KEY
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
-export const analytics = typeof window !== "undefined" ? getAnalytics(app) : null;
 export default app;
